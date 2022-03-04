@@ -11,43 +11,44 @@ import time
 import utils
 import models
 import argparse
-import data_loader
+import data_loader_physio as data_loader
 import pandas as pd
 import ujson as json
 
 from sklearn import metrics
-
-from ipdb import set_trace
+from math import sqrt
+print("data_loader_physio")
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--epochs', type=int, default=1000)
+parser.add_argument('--epochs', type=int, default=200)
 parser.add_argument('--batch_size', type=int, default=32)
-parser.add_argument('--model', type=str)
-parser.add_argument('--hid_size', type=int)
-parser.add_argument('--impute_weight', type=float)
-parser.add_argument('--label_weight', type=float)
+parser.add_argument('--model', type=str, default="brits")
+parser.add_argument('--hid_size', type=int, default=64)
+parser.add_argument('--impute_weight', type=float, default=1.0)
+parser.add_argument('--label_weight', type=float, default=0.0)
 args = parser.parse_args()
 
 
 def train(model):
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-    data_iter = data_loader.get_loader(batch_size=args.batch_size)
+    data_iter = data_loader.get_loader(batch_size=args.batch_size,type="train")
+    test_iter = data_loader.get_loader(batch_size=args.batch_size,type="test")
 
     for epoch in range(args.epochs):
         model.train()
 
         run_loss = 0.0
-
+        print("epoch: ", epoch)
         for idx, data in enumerate(data_iter):
             data = utils.to_var(data)
             ret = model.run_on_batch(data, optimizer, epoch)
 
             run_loss += ret['loss'].item()
 
-            print '\r Progress epoch {}, {:.2f}%, average loss {}'.format(epoch, (idx + 1) * 100.0 / len(data_iter), run_loss / (idx + 1.0)),
+            # print('\r Progress epoch {}, {:.2f}%, average loss {}'.format(epoch, (idx + 1) * 100.0 / len(data_iter), run_loss / (idx + 1.0))),
 
-        evaluate(model, data_iter)
+        evaluate(model, test_iter)
 
 
 def evaluate(model, val_iter):
@@ -61,7 +62,10 @@ def evaluate(model, val_iter):
 
     save_impute = []
     save_label = []
-
+    mse_total = 0
+    evalpoints_total = 0
+   
+    
     for idx, data in enumerate(val_iter):
         data = utils.to_var(data)
         ret = model.run_on_batch(data, None)
@@ -78,6 +82,10 @@ def evaluate(model, val_iter):
         eval_ = ret['evals'].data.cpu().numpy()
         imputation = ret['imputations'].data.cpu().numpy()
 
+        mse_current = (((eval_ - imputation) * eval_masks) ** 2)
+        mse_total += mse_current.sum().item()
+        evalpoints_total += eval_masks.sum().item()
+
         evals += eval_[np.where(eval_masks == 1)].tolist()
         imputations += imputation[np.where(eval_masks == 1)].tolist()
 
@@ -91,14 +99,15 @@ def evaluate(model, val_iter):
     labels = np.asarray(labels).astype('int32')
     preds = np.asarray(preds)
 
-    print 'AUC {}'.format(metrics.roc_auc_score(labels, preds))
+    print('AUC {}'.format(metrics.roc_auc_score(labels, preds)))
 
     evals = np.asarray(evals)
     imputations = np.asarray(imputations)
 
-    print 'MAE', np.abs(evals - imputations).mean()
-
-    print 'MRE', np.abs(evals - imputations).sum() / np.abs(evals).sum()
+    print('MAE', np.abs(evals - imputations).mean())
+    # print('RMSE', sqrt(metrics.mean_squared_error(evals, imputations)))
+    print('RMSE', sqrt(mse_total/evalpoints_total))
+    print('MRE', np.abs(evals - imputations).sum() / np.abs(evals).sum())
 
     save_impute = np.concatenate(save_impute, axis=0)
     save_label = np.concatenate(save_label, axis=0)

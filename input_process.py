@@ -5,7 +5,7 @@ import re
 import numpy as np
 import pandas as pd
 import ujson as json
-
+import random
 patient_ids = []
 
 for filename in os.listdir('./raw'):
@@ -42,6 +42,8 @@ std = np.array(
      133.96778334724377])
 
 fs = open('./json/json', 'w')
+f_train = open('./json/train.json', 'w')
+f_test = open('./json/test.json', 'w')
 
 def to_time_bin(x):
     h, m = map(int, x.split(':'))
@@ -54,7 +56,7 @@ def parse_data(x):
     values = []
 
     for attr in attributes:
-        if x.has_key(attr):
+        if attr in x:
             values.append(x[attr])
         else:
             values.append(np.nan)
@@ -80,7 +82,7 @@ def parse_rec(values, masks, evals, eval_masks, dir_):
     deltas = parse_delta(masks, dir_)
 
     # only used in GRU-D
-    forwards = pd.DataFrame(values).fillna(method='ffill').fillna(0.0).as_matrix()
+    forwards = pd.DataFrame(values).fillna(method='ffill').fillna(0.0).values
 
     rec = {}
 
@@ -95,7 +97,7 @@ def parse_rec(values, masks, evals, eval_masks, dir_):
     return rec
 
 
-def parse_id(id_):
+def parse_id(id_, type ="train",missing_rate=0.7):
     data = pd.read_csv('./raw/{}.txt'.format(id_))
     # accumulate the records within one hour
     data['Time'] = data['Time'].apply(lambda x: to_time_bin(x))
@@ -112,42 +114,89 @@ def parse_id(id_):
 
     evals = evals.reshape(-1)
 
-    # randomly eliminate 10% values as the imputation ground-truth
-    indices = np.where(~np.isnan(evals))[0].tolist()
-    indices = np.random.choice(indices, len(indices) // 10)
-
+    # randomly eliminate 50% values as the imputation ground-truth
+    p = np.random.rand(evals.shape[0])  #(N,)
+    eval_masks = np.zeros_like(evals)
+    eval_masks[p<=missing_rate]=1
     values = evals.copy()
-    values[indices] = np.nan
-
     masks = ~np.isnan(values)
-    eval_masks = (~np.isnan(values)) ^ (~np.isnan(evals))
+    eval_masks = eval_masks * masks
+    masks = masks - eval_masks
+    # print("missing rate: ", eval_masks.sum()/(masks.sum()+eval_masks.sum()))
+    values[eval_masks == 1] = np.nan
+    
+    #masks = ~np.isnan(values)
+    #eval_masks = (~np.isnan(values)) ^ (~np.isnan(evals))
 
     evals = evals.reshape(shp)
     values = values.reshape(shp)
 
     masks = masks.reshape(shp)
     eval_masks = eval_masks.reshape(shp)
+    all = masks + eval_masks
+
+
 
     label = out.loc[int(id_)]
 
-    rec = {'label': label}
+    rec = {'label': int(label)}
 
     # prepare the model for both directions
     rec['forward'] = parse_rec(values, masks, evals, eval_masks, dir_='forward')
     rec['backward'] = parse_rec(values[::-1], masks[::-1], evals[::-1], eval_masks[::-1], dir_='backward')
 
     rec = json.dumps(rec)
+    
+    
 
-    fs.write(rec + '\n')
 
 
-for id_ in patient_ids:
-    print('Processing patient {}'.format(id_))
+    if type == "train":
+        f_train.write(rec + '\n')
+    else:
+        f_test.write(rec + '\n')
+
+
+
+
+random.shuffle(patient_ids)
+num = len(patient_ids)
+num_train = int(num * 0.8)
+missing_rate = 0.7
+print("all set ", num_train)
+print("train set ", num)
+print("missing rate ", missing_rate)
+for i in range(0,num_train):
+    id_ = patient_ids[i]
+    # print('[Train] Processing patient {}'.format(id_))
     try:
-        parse_id(id_)
+        parse_id(id_,type="train",missing_rate=missing_rate)
     except Exception as e:
         print(e)
         continue
+
+
+for i in range(num_train, num):
+    id_ = patient_ids[i]
+    # print('[Test] Processing patient {}'.format(id_))
+    try:
+        parse_id(id_,type="test",missing_rate=missing_rate)
+    except Exception as e:
+        print(e)
+        continue
+
+fs.close()
+f_train.close()
+f_test.close()
+
+
+# for id_ in patient_ids:
+#
+#     try:
+#         parse_id(id_)
+#     except Exception as e:
+#         print(e)
+#         continue
 
 fs.close()
 
