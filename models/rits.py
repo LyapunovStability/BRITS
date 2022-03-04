@@ -1,19 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 
 from torch.autograd import Variable
 from torch.nn.parameter import Parameter
 
 import math
-import utils
-import argparse
-import data_loader
-
-from ipdb import set_trace
-from sklearn import metrics
-
+from math import sqrt
 SEQ_LEN = 48
 
 def binary_cross_entropy_with_logits(input, target, weight=None, size_average=True, reduce=True):
