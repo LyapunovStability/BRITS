@@ -89,16 +89,18 @@ def SVM(train_x, train_y, test_x, test_y):
     print("start train svm")
     x = train_x.reshape(B, -1).cpu().numpy()
     y = train_y[:, 1].cpu().numpy()
-    cls_model = svm.SVC(kernel='rbf', gamma=10, decision_function_shape='ovo', probability=True, max_iter=10000)
+    print("positive rate: ", np.sum(y) / B)
+    cls_model = svm.SVC(kernel='rbf', decision_function_shape='ovo', probability=True, max_iter=10000)
     cls_model.fit(x, y)
     # test
     print("start test svm")
     B, L, N = test_x.shape
     x = test_x.reshape(B, -1).cpu().numpy()
     y = test_y[:, 1].cpu().numpy()
+    print("positive rate: ", np.sum(y) / B)
     probs = cls_model.predict_proba(x)[:, 1]
     auroc = roc_auc_score(y, probs)
-    print(" AUROC(model:logit): {:.4f}".format(auroc))
+    print(" AUROC: {:.4f}".format(auroc))
 
 def Logistic_Regression(train_x, train_y, test_x, test_y):
     B, L, N = train_x.shape
@@ -118,57 +120,65 @@ def Logistic_Regression(train_x, train_y, test_x, test_y):
     print(" AUROC(model:logit): {:.4f}".format(auroc))
 
 
-def GRU_Classifier(train_x, train_y, test_x, test_y, mode="train", model=None):
-
+def GRU_Classifier(train_set_x, train_set_y, test_set_x, test_set_y, mode="train", model=None):
     # model = GRUModel(N, 128, 2).to("cuda:0")
-    if mode == "train":
-        B, L, N = train_x.shape
+    for epoch in range(200):
         BCEloss = torch.nn.BCELoss()
-        optim = torch.optim.Adam(model.parameters(), lr=0.005)
-        for epoch in range(100):
-            model.train()
+        optim = torch.optim.Adam(model.parameters(), lr=0.001)
+        print("train gru")
+        model.train()
+        average_loss = 0
+        for train_x, train_y in zip(train_set_x, train_set_y):
+            train_y = train_y.to(train_x.device)
             optim.zero_grad()
             pred = model(train_x)
             loss = BCEloss(pred.squeeze(0), train_y)
+            average_loss = average_loss + loss.item()
             loss.backward()
             optim.step()
-    else:
+            average_loss = average_loss + loss.item()
+        print("test gru")
+        model.eval()
         with torch.no_grad():
-            pred = model(test_x)
+            test_set_y = test_set_y.to(test_set_x.device)
+            pred = model(test_set_x)
             pred = pred.squeeze(0)
-            auroc = roc_auc_score(test_y.cpu().numpy(), pred.cpu().numpy())
-            print("AUROC(model:GRU): {:.4f}".format(auroc))
+            auroc = roc_auc_score(test_set_y.cpu().numpy(), pred.cpu().numpy())
+            print("epoch:", epoch, " AUROC(GRU): {:.4f}".format(auroc))
+
+
 
 def classify(classifier="gru", model_path="", path="", device=""):
 
-    with open(path, "r") as f:
-        config = yaml.safe_load(f)
-    print(json.dumps(config, indent=4))
+
 
     train_loader = data_loader.get_loader(batch_size = 64, type="train")
     test_loader = data_loader.get_loader(batch_size = 64, type="test")
 
     N = 35
-    model = GRUModel(N, 128, 2).to("cuda:0")
+    model = GRUModel(N, 128, 2).to(device)
     train_set_x = []
     train_set_y = []
 
-    imputer = brits(config, device=device).to(device)
-    imputer.load_state_dict(torch.load(model_path + '/' + "model.pth"))
+    imputer = brits.Model(64, 1.0, 0.0).to(device)
+    imputer.load_state_dict(torch.load(model_path + '/' + "model_brits.pth"))
     print("impute train set: ", len(train_loader))
     batch_no = 0
     for train_batch in train_loader:
         with torch.no_grad():
             data = collate_fn(train_batch)
             ret = imputer.run_on_batch(data, None)
-            train_x = ret["imputation"]
+            train_x = ret["imputations"]
+            cond_masks = train_batch['masks'].to(train_x.device)
+            cond_obs = train_batch['values'].to(train_x.device)
+            train_x = (1 - cond_masks) * train_x + cond_masks * cond_obs
             train_y = train_batch["y"]
             train_set_x.append(train_x)
             train_set_y.append(train_y)
             batch_no = batch_no + 1
             print("batch no: ", batch_no)
-        if classifier == "gru":
-            GRU_Classifier(train_x, train_y, None, None, mode="train", model=model)
+    # if classifier == "gru":
+    #     GRU_Classifier(train_set_x, train_set_y, None, None, mode="train", model=model)
 
     print("impute test set: ", len(test_loader))
     batch_no = 0
@@ -176,16 +186,22 @@ def classify(classifier="gru", model_path="", path="", device=""):
     test_set_y = []
     for test_batch in test_loader:
         with torch.no_grad():
-            data = collate_fn(train_batch)
+            data = collate_fn(test_batch)
             ret = imputer.run_on_batch(data, None)
-            test_x = ret["imputation"]
+            test_x = ret["imputations"]
+            cond_masks = test_batch['masks'].to(test_x.device)
+            cond_obs = test_batch['values'].to(test_x.device)
+            test_x = (1 - cond_masks) * test_x + cond_masks * cond_obs
             test_y = test_batch["y"]
             batch_no =  batch_no + 1
             print("batch no: ", batch_no)
             test_set_x.append(test_x)
             test_set_y.append(test_y)
-        if classifier == "gru":
-            GRU_Classifier(None, None, test_x, test_y, mode="test", model=model)
+
+    if classifier == "gru":
+        test_set_x = torch.cat(test_set_x, dim=0)
+        test_set_y = torch.cat(test_set_y, dim=0)
+        GRU_Classifier(train_set_x, train_set_y,  test_x, test_y, model=model)
 
     if classifier == "svm" or classifier == "lr":
         train_set_x = torch.cat(train_set_x, dim=0)
@@ -199,4 +215,4 @@ def classify(classifier="gru", model_path="", path="", device=""):
 
 
 if __name__ == '__main__':
-    classify(classifier="lr", model_path="/home/comp/csjwxu/CSDI/save/physio_fold0_20220311_151849", path="/home/comp/csjwxu/CSDI/save/physio_fold0_20220311_151849/config.json", device="cuda:0")
+    classify(classifier="gru", model_path="/home/comp/csjwxu/BRITS", path="/home/comp/csjwxu/CSDI/save/physio_fold0_20220311_151849/config.json", device="cuda:0")
