@@ -16,6 +16,25 @@ from sklearn.linear_model import LogisticRegression
 from sklearn import svm
 
 
+from torch.utils.data import Dataset, DataLoader
+
+class impute_set(Dataset):
+    def __init__(self, x, y, t_step=48, feature=35):
+        super(impute_set, self).__init__()
+        print("x shape: ", x.shape)
+        print("y shape: ", y.shape)
+        self.x = x.reshape(-1, 48, 35)
+        self.y = y.reshape(-1, 2)
+
+    def __len__(self):
+        return self.x.shape[0]
+
+    def __getitem__(self, idx):
+        return self.x[idx], self.y[idx]
+
+
+
+
 def collate_fn(recs):
     def to_tensor_dict(recs, direction="forward"):
         if direction == "forward":
@@ -49,7 +68,7 @@ class GRUModel(nn.Module):
         # 这里设置了 batch_first=True, 所以应该 inputs = inputs.view(inputs.shape[0], -1, inputs.shape[1])
         # 针对时间序列预测问题，相当于将时间步（seq_len）设置为 1。
         self.GRU_layer = nn.GRU(input_size=input_num, hidden_size=hidden_num, batch_first=True)
-        self.output_linear = nn.Linear(hidden_num, output_num)
+        self.output_linear = nn.Linear(hidden_num, 1)
         self.softmax =nn.Softmax(dim=2)
         self.hidden = None
 
@@ -59,7 +78,7 @@ class GRUModel(nn.Module):
         # 这里不用显式地传入隐层状态 self.hidden
         x, self.hidden = self.GRU_layer(x)
         y = self.output_linear(self.hidden)
-        y = self.softmax(y)
+        y = torch.sigmoid(y)
         return y
 
 
@@ -120,31 +139,45 @@ def Logistic_Regression(train_x, train_y, test_x, test_y):
     print(" AUROC(model:logit): {:.4f}".format(auroc))
 
 
-def GRU_Classifier(train_set_x, train_set_y, test_set_x, test_set_y, mode="train", model=None):
+def GRU_Classifier(train_set, test_set, mode="train", model=None):
     # model = GRUModel(N, 128, 2).to("cuda:0")
+    the_best_auc_roc = 0
+    train_iter = DataLoader(dataset=train_set, \
+                           batch_size=64, \
+                           shuffle=True, \
+                           )
+    test_iter = DataLoader(dataset=test_set, \
+                           batch_size=test_set.__len__(), \
+                           shuffle=True, \
+                           )
+
     for epoch in range(200):
         BCEloss = torch.nn.BCELoss()
         optim = torch.optim.Adam(model.parameters(), lr=0.001)
-        print("train gru")
+
         model.train()
         average_loss = 0
-        for train_x, train_y in zip(train_set_x, train_set_y):
+        for train_x, train_y in train_iter:
             train_y = train_y.to(train_x.device)
             optim.zero_grad()
             pred = model(train_x)
-            loss = BCEloss(pred.squeeze(0), train_y)
+            pred = pred.squeeze(0).squeeze(-1)
+            loss = BCEloss(pred, train_y[:, 1])
             average_loss = average_loss + loss.item()
             loss.backward()
             optim.step()
             average_loss = average_loss + loss.item()
-        print("test gru")
+
         model.eval()
         with torch.no_grad():
-            test_set_y = test_set_y.to(test_set_x.device)
-            pred = model(test_set_x)
-            pred = pred.squeeze(0)
-            auroc = roc_auc_score(test_set_y.cpu().numpy(), pred.cpu().numpy())
-            print("epoch:", epoch, " AUROC(GRU): {:.4f}".format(auroc))
+            for test_x, test_y in test_iter:
+                test_y = test_y.to(test_x.device)
+                pred = model(test_x)
+                pred = pred.squeeze(0)
+                auroc = roc_auc_score(test_y.cpu().numpy()[:, 1], pred.cpu().numpy())
+                if the_best_auc_roc < auroc:
+                    the_best_auc_roc = auroc
+        print(" AUROC(GRU): {:.4f}".format(auroc))
 
 
 
@@ -201,7 +234,12 @@ def classify(classifier="gru", model_path="", path="", device=""):
     if classifier == "gru":
         test_set_x = torch.cat(test_set_x, dim=0)
         test_set_y = torch.cat(test_set_y, dim=0)
-        GRU_Classifier(train_set_x, train_set_y,  test_x, test_y, model=model)
+        train_set_x = torch.cat(train_set_x, dim=0)
+        train_set_y = torch.cat(train_set_y, dim=0)
+        train_set = impute_set(train_set_x,train_set_y)
+        test_set = impute_set(test_set_x,test_set_y)
+
+        GRU_Classifier(train_set, test_set, model=model)
 
     if classifier == "svm" or classifier == "lr":
         train_set_x = torch.cat(train_set_x, dim=0)
