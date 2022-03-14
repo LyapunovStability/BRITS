@@ -5,7 +5,7 @@ from torch.autograd import Variable
 
 import rits_i
 
-SEQ_LEN = 36
+SEQ_LEN = 24
 
 
 class Model(nn.Module):

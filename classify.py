@@ -203,8 +203,9 @@ def classify(classifier="gru", model_path="", path="", device=""):
             ret = imputer.run_on_batch(data, None)
             train_x = ret["imputations"]
             cond_masks = train_batch['masks'].to(train_x.device)
+            eval_masks = train_batch['eval_masks'].to(train_x.device)
             cond_obs = train_batch['values'].to(train_x.device)
-            train_x = (1 - cond_masks) * train_x + cond_masks * cond_obs
+            train_x = (1-cond_masks) * train_x + cond_masks * cond_obs
             train_y = train_batch["y"]
             train_set_x.append(train_x)
             train_set_y.append(train_y)
@@ -223,8 +224,9 @@ def classify(classifier="gru", model_path="", path="", device=""):
             ret = imputer.run_on_batch(data, None)
             test_x = ret["imputations"]
             cond_masks = test_batch['masks'].to(test_x.device)
+            eval_masks = test_batch['eval_masks'].to(train_x.device)
             cond_obs = test_batch['values'].to(test_x.device)
-            test_x = (1 - cond_masks) * test_x + cond_masks * cond_obs
+            test_x = (1-cond_masks) * test_x + cond_masks * cond_obs
             test_y = test_batch["y"]
             batch_no =  batch_no + 1
             print("batch no: ", batch_no)
@@ -253,4 +255,4 @@ def classify(classifier="gru", model_path="", path="", device=""):
 
 
 if __name__ == '__main__':
-    classify(classifier="gru", model_path="/home/comp/csjwxu/BRITS", path="/home/comp/csjwxu/CSDI/save/physio_fold0_20220311_151849/config.json", device="cuda:0")
+    classify(classifier="lr", model_path="/home/comp/csjwxu/BRITS", path="/home/comp/csjwxu/CSDI/save/physio_fold0_20220311_151849/config.json", device="cuda:0")

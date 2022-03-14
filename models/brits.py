@@ -5,7 +5,7 @@ from torch.autograd import Variable
 
 import models.rits as rits
 
-SEQ_LEN = 48
+
 RNN_HID_SIZE = 64
 
 
