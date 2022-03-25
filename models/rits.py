@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from torch.autograd import Variable
 from torch.nn.parameter import Parameter
-
+from models.param import *
 import math
 from math import sqrt
 
@@ -93,7 +93,7 @@ class Model(nn.Module):
         self.build()
 
     def build(self):
-        input_size = 36
+        input_size = feature_dim
         self.rnn_cell = nn.LSTMCell(input_size * 2, self.rnn_hid_size)
 
         self.temp_decay_h = TemporalDecay(input_size=input_size, output_size=self.rnn_hid_size, diag = False)

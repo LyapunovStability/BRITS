@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from torch.autograd import Variable
 from torch.nn.parameter import Parameter
-
+from models.param import *
 import math
 
 SEQ_LEN = 48
@@ -60,10 +60,10 @@ class Model(nn.Module):
         self.build()
 
     def build(self):
-        self.rnn_cell = nn.LSTMCell(35 * 2, self.rnn_hid_size)
+        self.rnn_cell = nn.LSTMCell(feature_dim * 2, self.rnn_hid_size)
 
-        self.regression = nn.Linear(self.rnn_hid_size, 35)
-        self.temp_decay = TemporalDecay(input_size = 35, rnn_hid_size = self.rnn_hid_size)
+        self.regression = nn.Linear(self.rnn_hid_size, feature_dim)
+        self.temp_decay = TemporalDecay(input_size = feature_dim, rnn_hid_size = self.rnn_hid_size)
 
         self.out = nn.Linear(self.rnn_hid_size, 1)
 
