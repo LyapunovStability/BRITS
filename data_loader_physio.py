@@ -103,11 +103,20 @@ class MySet(Dataset):
 
 def get_loader(batch_size=64, shuffle=True, type="train"):
     data_set = MySet(type)
-    data_iter = DataLoader(dataset=data_set, \
+    if type == "test":
+        data_iter = DataLoader(dataset=data_set, \
+                           batch_size=data_set.__len__(), \
+                           num_workers=4, \
+                           shuffle=shuffle, \
+                           pin_memory=True, \
+                           )
+    else:
+        data_iter = DataLoader(dataset=data_set, \
                            batch_size=batch_size, \
                            num_workers=4, \
                            shuffle=shuffle, \
                            pin_memory=True, \
                            )
+        
 
     return data_iter

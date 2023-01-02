@@ -17,6 +17,7 @@ import ujson as json
 
 from sklearn import metrics
 from math import sqrt
+import time 
 
 print("data_loader_physio")
 
@@ -71,8 +72,11 @@ def train(model):
             run_loss += ret['loss'].item()
 
             # print('\r Progress epoch {}, {:.2f}%, average loss {}'.format(epoch, (idx + 1) * 100.0 / len(data_iter), run_loss / (idx + 1.0))),
-
+        start_time = time.time()
         evaluate(model, test_iter)
+        torch.cuda.synchronize()
+        # print("result: ", imputed_samples)
+        print("net time", time.time() - start_time)
 
 
 def evaluate(model, val_iter):
