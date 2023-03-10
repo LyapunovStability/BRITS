@@ -119,7 +119,7 @@ def evaluate(model, val_iter):
         # collect test label & prediction
         pred = pred[np.where(is_train == 0)]
         label = label[np.where(is_train == 0)]
-
+        print("num: ", len(pred))
         labels += label.tolist()
         preds += pred.tolist()
 
