@@ -117,8 +117,10 @@ class Model(nn.Module):
         eval_masks = data[direct]['eval_masks']
 
         labels = data['labels'].view(-1, 1)
+        y_true = data['y'].view(-1, 1)
+        
         is_train = data['is_train'].view(-1, 1)
-
+        
         h = Variable(torch.zeros((values.size()[0], self.rnn_hid_size)))
         c = Variable(torch.zeros((values.size()[0], self.rnn_hid_size)))
 
@@ -164,10 +166,10 @@ class Model(nn.Module):
         imputations = torch.cat(imputations, dim = 1)
 
         y_h = self.out(h)
-        y_loss = binary_cross_entropy_with_logits(y_h, labels, reduce = False)
+        y_loss = binary_cross_entropy_with_logits(y_h, y_true, reduce = False)
         y_loss = torch.sum(y_loss * is_train) / (torch.sum(is_train) + 1e-5)
 
-        y_h = F.sigmoid(y_h)
+        y_h = torch.sigmoid(y_h)
 
         return {'loss': x_loss * self.impute_weight + y_loss * self.label_weight, 'predictions': y_h,\
                 'imputations': imputations, 'labels': labels, 'is_train': is_train,\

@@ -16,7 +16,7 @@ class Model(nn.Module):
         self.rnn_hid_size = rnn_hid_size
         self.impute_weight = impute_weight
         self.label_weight = label_weight
-
+        print("label weight: ", self.label_weight)
         self.build()
 
     def build(self):
