@@ -23,6 +23,7 @@ class MySet(Dataset):
         self.label = data['label'].float().cpu()
         self.label_mask = data['label_mask'].float().cpu()
 
+        self.type = type
 
         self.X_b = self.X.numpy()
         self.X_b = torch.from_numpy(np.flip(self.X_b, axis=1).copy())
@@ -108,14 +109,14 @@ def get_loader(batch_size=64, shuffle=True, type="train"):
                            batch_size=data_set.__len__(), \
                            num_workers=4, \
                            shuffle=shuffle, \
-                           pin_memory=True, \
+                           pin_memory=False, \
                            )
     else:
         data_iter = DataLoader(dataset=data_set, \
                            batch_size=batch_size, \
-                           num_workers=4, \
+                           num_workers=2, \
                            shuffle=shuffle, \
-                           pin_memory=True, \
+                           pin_memory=False, \
                            )
         
 
